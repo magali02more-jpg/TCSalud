@@ -1,107 +1,175 @@
 import streamlit as st
 from datetime import date
+from supabase import create_client, Client
 
-# ==========================================
+
+# =========================================================
 # CONFIGURACIÓN
-# ==========================================
+# =========================================================
 
 st.set_page_config(
     page_title="TCSalud",
     page_icon="🏥",
-    layout="wide",
-    initial_sidebar_state="expanded"
+    layout="wide"
 )
 
-# ==========================================
+
+# =========================================================
+# CONEXIÓN CON SUPABASE
+# =========================================================
+
+SUPABASE_URL = st.secrets["SUPABASE_URL"]
+SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
+
+supabase: Client = create_client(
+    SUPABASE_URL,
+    SUPABASE_KEY
+)
+
+
+# =========================================================
 # ESTILOS
-# ==========================================
+# =========================================================
 
-st.markdown("""
-<style>
+st.markdown(
+    """
+    <style>
 
-.main {
-    background-color: #f7f9fc;
-}
+    .main {
+        background-color: #f7f9fc;
+    }
 
-.block-container {
-    padding-top: 2rem;
-}
+    .block-container {
+        padding-top: 2rem;
+    }
 
-.logo {
-    text-align: center;
-    font-size: 38px;
-    font-weight: 700;
-    color: #167c80;
-}
+    .logo {
+        text-align: center;
+        font-size: 40px;
+        font-weight: 700;
+        color: #167c80;
+    }
 
-.subtitle {
-    text-align: center;
-    color: #6b7280;
-    margin-bottom: 30px;
-}
+    .subtitle {
+        text-align: center;
+        color: #6b7280;
+        margin-bottom: 30px;
+    }
 
-.card {
-    background-color: white;
-    padding: 20px;
-    border-radius: 15px;
-    border: 1px solid #e5e7eb;
-    margin-bottom: 15px;
-}
-
-</style>
-""", unsafe_allow_html=True)
+    </style>
+    """,
+    unsafe_allow_html=True
+)
 
 
-# ==========================================
-# DATOS DE PRUEBA
-# ==========================================
+# =========================================================
+# FUNCIONES
+# =========================================================
 
-if "pacientes" not in st.session_state:
+def obtener_profesional():
 
-    st.session_state.pacientes = [
-        {
-            "id": 1,
-            "nombre": "María",
-            "apellido": "González",
-            "dni": "35123456",
-            "fecha_nacimiento": "1990-05-12",
-            "telefono": "3515555555",
-            "email": "maria@email.com",
-            "motivo": "Seguimiento",
-            "fecha_ingreso": "2026-08-01",
-            "estado": "Activo"
-        },
-        {
-            "id": 2,
-            "nombre": "Juan",
-            "apellido": "Pérez",
-            "dni": "38456789",
-            "fecha_nacimiento": "1988-09-20",
-            "telefono": "3514444444",
-            "email": "juan@email.com",
-            "motivo": "Consulta inicial",
-            "fecha_ingreso": "2026-08-05",
-            "estado": "Activo"
+    try:
+
+        usuario = st.session_state.usuario
+
+        respuesta = (
+            supabase
+            .table("profesionales")
+            .select("*")
+            .eq("auth_user_id", usuario["id"])
+            .limit(1)
+            .execute()
+        )
+
+        if respuesta.data:
+
+            return respuesta.data[0]
+
+        return None
+
+    except Exception as error:
+
+        st.error(
+            f"No se pudo obtener el profesional: {error}"
+        )
+
+        return None
+
+
+def obtener_pacientes(profesional_id):
+
+    try:
+
+        respuesta = (
+            supabase
+            .table("pacientes")
+            .select("*")
+            .eq("profesional_id", profesional_id)
+            .order("apellido")
+            .execute()
+        )
+
+        return respuesta.data or []
+
+    except Exception as error:
+
+        st.error(
+            f"No se pudieron cargar los pacientes: {error}"
+        )
+
+        return []
+
+
+def crear_paciente(
+    profesional_id,
+    nombre,
+    apellido,
+    dni,
+    fecha_nacimiento,
+    telefono,
+    email,
+    obra_social,
+    motivo
+):
+
+    try:
+
+        datos = {
+            "profesional_id": profesional_id,
+            "nombre": nombre,
+            "apellido": apellido,
+            "dni": dni,
+            "fecha_nacimiento": str(fecha_nacimiento),
+            "telefono": telefono,
+            "email": email,
+            "obra_social": obra_social,
+            "motivo_consulta": motivo,
+            "estado": "activo"
         }
-    ]
+
+        respuesta = (
+            supabase
+            .table("pacientes")
+            .insert(datos)
+            .execute()
+        )
+
+        return respuesta.data
+
+    except Exception as error:
+
+        st.error(
+            f"No se pudo guardar el paciente: {error}"
+        )
+
+        return None
 
 
-# ==========================================
-# ESTADO DE LA APLICACIÓN
-# ==========================================
-
-if "logueado" not in st.session_state:
-    st.session_state.logueado = False
-
-if "paciente_seleccionado" not in st.session_state:
-    st.session_state.paciente_seleccionado = None
-
-
-# ==========================================
+# =========================================================
 # LOGIN
-# ==========================================
+# =========================================================
 
-def login():
+def pantalla_login():
 
     st.markdown(
         '<div class="logo">🏥 TCSalud</div>',
@@ -115,61 +183,366 @@ def login():
         unsafe_allow_html=True
     )
 
+    st.divider()
+
     col1, col2, col3 = st.columns([1, 2, 1])
 
     with col2:
 
-        st.subheader("Iniciar sesión")
+        st.subheader("🔐 Iniciar sesión")
 
-        usuario = st.text_input(
-            "Usuario o email",
-            placeholder="Ingresá tu usuario"
+        email = st.text_input(
+            "Email"
         )
 
-        contraseña = st.text_input(
+        password = st.text_input(
             "Contraseña",
-            type="password",
-            placeholder="Ingresá tu contraseña"
+            type="password"
         )
 
-        ingresar = st.button(
+        if st.button(
             "Ingresar",
             use_container_width=True
+        ):
+
+            try:
+
+                respuesta = supabase.auth.sign_in_with_password(
+                    {
+                        "email": email,
+                        "password": password
+                    }
+                )
+
+                if respuesta.user:
+
+                    st.session_state.usuario = {
+                        "id": respuesta.user.id,
+                        "email": respuesta.user.email
+                    }
+
+                    st.rerun()
+
+            except Exception:
+
+                st.error(
+                    "Email o contraseña incorrectos."
+                )
+
+
+# =========================================================
+# LISTA DE PACIENTES
+# =========================================================
+
+def pantalla_pacientes(profesional):
+
+    st.title("👥 Pacientes")
+
+    st.write(
+        "Administrá los pacientes de tu consultorio."
+    )
+
+    pacientes = obtener_pacientes(
+        profesional["id"]
+    )
+
+    pestaña_lista, pestaña_nuevo = st.tabs(
+        [
+            "📋 Pacientes",
+            "➕ Nuevo paciente"
+        ]
+    )
+
+
+    # =====================================================
+    # LISTA
+    # =====================================================
+
+    with pestaña_lista:
+
+        buscar = st.text_input(
+            "🔎 Buscar paciente",
+            placeholder="Nombre, apellido o DNI"
         )
 
-        if ingresar:
+        pacientes_filtrados = pacientes
 
-            if usuario == "demo" and contraseña == "1234":
+        if buscar:
 
-                st.session_state.logueado = True
-                st.rerun()
+            texto = buscar.lower()
+
+            pacientes_filtrados = [
+                paciente
+                for paciente in pacientes
+                if texto in (
+                    paciente["nombre"]
+                    + " "
+                    + paciente["apellido"]
+                    + " "
+                    + (paciente["dni"] or "")
+                ).lower()
+            ]
+
+
+        if not pacientes_filtrados:
+
+            st.info(
+                "Todavía no hay pacientes registrados."
+            )
+
+        else:
+
+            for paciente in pacientes_filtrados:
+
+                with st.container(border=True):
+
+                    col1, col2, col3 = st.columns(
+                        [3, 2, 1]
+                    )
+
+                    with col1:
+
+                        st.subheader(
+                            f"{paciente['nombre']} "
+                            f"{paciente['apellido']}"
+                        )
+
+                        st.write(
+                            f"DNI: {paciente['dni'] or '-'}"
+                        )
+
+                    with col2:
+
+                        st.write(
+                            f"🏥 Obra social: "
+                            f"{paciente.get('obra_social') or '-'}"
+                        )
+
+                        st.write(
+                            f"📞 {paciente.get('telefono') or '-'}"
+                        )
+
+                    with col3:
+
+                        if st.button(
+                            "Ver ficha",
+                            key=f"paciente_{paciente['id']}"
+                        ):
+
+                            st.session_state.paciente_seleccionado = paciente
+
+                            st.rerun()
+
+
+    # =====================================================
+    # NUEVO PACIENTE
+    # =====================================================
+
+    with pestaña_nuevo:
+
+        st.subheader(
+            "➕ Registrar paciente"
+        )
+
+        nombre = st.text_input(
+            "Nombre *"
+        )
+
+        apellido = st.text_input(
+            "Apellido *"
+        )
+
+        dni = st.text_input(
+            "DNI"
+        )
+
+        fecha_nacimiento = st.date_input(
+            "Fecha de nacimiento",
+            value=date(1990, 1, 1),
+            min_value=date(1900, 1, 1),
+            max_value=date.today(),
+            format="DD/MM/YYYY"
+        )
+
+        telefono = st.text_input(
+            "Teléfono"
+        )
+
+        email = st.text_input(
+            "Email"
+        )
+
+        obra_social = st.text_input(
+            "Obra social"
+        )
+
+        motivo = st.text_area(
+            "Motivo de consulta"
+        )
+
+        if st.button(
+            "💾 Guardar paciente",
+            use_container_width=True
+        ):
+
+            if not nombre or not apellido:
+
+                st.error(
+                    "Nombre y apellido son obligatorios."
+                )
 
             else:
 
-                st.error(
-                    "Usuario o contraseña incorrectos."
+                resultado = crear_paciente(
+                    profesional["id"],
+                    nombre,
+                    apellido,
+                    dni,
+                    fecha_nacimiento,
+                    telefono,
+                    email,
+                    obra_social,
+                    motivo
                 )
 
-        st.caption(
-            "Usuario de prueba: demo | Contraseña: 1234"
+                if resultado:
+
+                    st.success(
+                        "✅ Paciente guardado correctamente."
+                    )
+
+                    st.rerun()
+
+
+# =========================================================
+# FICHA DEL PACIENTE
+# =========================================================
+
+def pantalla_ficha(paciente):
+
+    st.title(
+        f"👤 {paciente['nombre']} "
+        f"{paciente['apellido']}"
+    )
+
+    if st.button(
+        "← Volver a pacientes"
+    ):
+
+        st.session_state.paciente_seleccionado = None
+
+        st.rerun()
+
+    st.divider()
+
+    st.subheader("📋 Datos del paciente")
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+
+        st.write(
+            f"**Nombre:** "
+            f"{paciente['nombre']} "
+            f"{paciente['apellido']}"
+        )
+
+        st.write(
+            f"**DNI:** "
+            f"{paciente['dni'] or '-'}"
+        )
+
+        fecha = paciente.get(
+            "fecha_nacimiento"
+        )
+
+        if fecha:
+
+            try:
+
+                fecha_formateada = date.fromisoformat(
+                    str(fecha)
+                ).strftime("%d/%m/%Y")
+
+            except Exception:
+
+                fecha_formateada = str(fecha)
+
+        else:
+
+            fecha_formateada = "-"
+
+        st.write(
+            f"**Fecha de nacimiento:** "
+            f"{fecha_formateada}"
+        )
+
+        st.write(
+            f"**Teléfono:** "
+            f"{paciente.get('telefono') or '-'}"
         )
 
 
-# ==========================================
-# DASHBOARD
-# ==========================================
+    with col2:
 
-def dashboard():
+        st.write(
+            f"**Email:** "
+            f"{paciente.get('email') or '-'}"
+        )
 
-    # --------------------------------------
-    # MENÚ LATERAL
-    # --------------------------------------
+        st.write(
+            f"**Obra social:** "
+            f"{paciente.get('obra_social') or '-'}"
+        )
+
+        st.write(
+            f"**Motivo de consulta:** "
+            f"{paciente.get('motivo_consulta') or '-'}"
+        )
+
+        st.write(
+            f"**Estado:** "
+            f"{paciente.get('estado') or 'activo'}"
+        )
+
+    st.divider()
+
+    st.subheader("📝 Evoluciones")
+
+    st.info(
+        "Todavía no hay evoluciones registradas."
+    )
+
+    if st.button(
+        "➕ Nueva evolución",
+        use_container_width=True
+    ):
+
+        st.info(
+            "El módulo de evoluciones lo "
+            "vamos a activar en el siguiente paso."
+        )
+
+
+# =========================================================
+# PANEL PRINCIPAL
+# =========================================================
+
+def dashboard(profesional):
 
     st.sidebar.title("🏥 TCSalud")
 
-    st.sidebar.caption(
-        "Gestión profesional para tu consultorio"
+    st.sidebar.write(
+        f"👤 {profesional['nombre']} "
+        f"{profesional['apellido']}"
     )
+
+    st.sidebar.caption(
+        profesional.get("profesion")
+        or "Profesional de la salud"
+    )
+
+    st.sidebar.divider()
 
     opcion = st.sidebar.radio(
         "Menú",
@@ -190,17 +563,22 @@ def dashboard():
         use_container_width=True
     ):
 
-        st.session_state.logueado = False
-        st.session_state.paciente_seleccionado = None
+        supabase.auth.sign_out()
+
+        st.session_state.clear()
 
         st.rerun()
 
 
-    # ======================================
+    # =====================================================
     # INICIO
-    # ======================================
+    # =====================================================
 
     if opcion == "🏠 Inicio":
+
+        pacientes = obtener_pacientes(
+            profesional["id"]
+        )
 
         st.title("Buen día 👋")
 
@@ -216,7 +594,7 @@ def dashboard():
 
             st.metric(
                 "👥 Pacientes",
-                len(st.session_state.pacientes)
+                len(pacientes)
             )
 
         with col2:
@@ -242,410 +620,167 @@ def dashboard():
 
         st.divider()
 
-        st.subheader("👥 Pacientes recientes")
+        st.subheader(
+            "👥 Pacientes recientes"
+        )
 
-        for paciente in st.session_state.pacientes:
+        if pacientes:
 
-            st.write(
-                f"**{paciente['nombre']} "
-                f"{paciente['apellido']}**"
-            )
+            for paciente in pacientes[:5]:
 
-
-    # ======================================
-    # PACIENTES
-    # ======================================
-
-    elif opcion == "👥 Pacientes":
-
-        # Si hay un paciente seleccionado,
-        # mostramos su ficha.
-
-        if st.session_state.paciente_seleccionado:
-
-            mostrar_ficha_paciente()
+                st.write(
+                    f"**{paciente['nombre']} "
+                    f"{paciente['apellido']}**"
+                )
 
         else:
 
-            mostrar_pacientes()
+            st.info(
+                "Todavía no tenés pacientes registrados."
+            )
 
 
-    # ======================================
+    # =====================================================
+    # PACIENTES
+    # =====================================================
+
+    elif opcion == "👥 Pacientes":
+
+        if st.session_state.get(
+            "paciente_seleccionado"
+        ):
+
+            pantalla_ficha(
+                st.session_state.paciente_seleccionado
+            )
+
+        else:
+
+            pantalla_pacientes(
+                profesional
+            )
+
+
+    # =====================================================
     # EVOLUCIONES
-    # ======================================
+    # =====================================================
 
     elif opcion == "📝 Evoluciones":
 
         st.title("📝 Evoluciones")
 
         st.info(
-            "El módulo de evoluciones será "
-            "desarrollado en la próxima etapa."
+            "Este módulo será desarrollado "
+            "a continuación."
         )
 
 
-    # ======================================
+    # =====================================================
     # AGENDA
-    # ======================================
+    # =====================================================
 
     elif opcion == "📅 Agenda":
 
         st.title("📅 Agenda")
 
         st.info(
-            "Próximamente podrás administrar "
-            "turnos y calendario."
+            "El módulo de turnos será desarrollado "
+            "a continuación."
         )
 
 
-    # ======================================
+    # =====================================================
     # ESTADÍSTICAS
-    # ======================================
+    # =====================================================
 
     elif opcion == "📊 Estadísticas":
 
         st.title("📊 Estadísticas")
 
-        st.info(
-            "Las estadísticas se conectarán "
-            "a los datos reales del sistema."
+        pacientes = obtener_pacientes(
+            profesional["id"]
+        )
+
+        st.metric(
+            "Total de pacientes",
+            len(pacientes)
         )
 
 
-    # ======================================
+    # =====================================================
     # CONFIGURACIÓN
-    # ======================================
+    # =====================================================
 
     elif opcion == "⚙️ Configuración":
 
         st.title("⚙️ Configuración")
 
         st.subheader(
-            "Perfil profesional"
-        )
-
-        st.text_input(
-            "Nombre del profesional"
-        )
-
-        st.text_input(
-            "Profesión"
-        )
-
-        st.text_input(
-            "Matrícula"
-        )
-
-        st.button(
-            "Guardar cambios"
-        )
-
-
-# ==========================================
-# LISTA DE PACIENTES
-# ==========================================
-
-def mostrar_pacientes():
-
-    st.title("👥 Pacientes")
-
-    st.write(
-        "Administrá los pacientes de tu consultorio."
-    )
-
-    pestaña1, pestaña2 = st.tabs(
-        [
-            "📋 Lista de pacientes",
-            "➕ Nuevo paciente"
-        ]
-    )
-
-
-    # --------------------------------------
-    # LISTA DE PACIENTES
-    # --------------------------------------
-
-    with pestaña1:
-
-        buscar = st.text_input(
-            "🔎 Buscar paciente",
-            placeholder="Nombre, apellido o DNI"
-        )
-
-        pacientes = st.session_state.pacientes
-
-        if buscar:
-
-            texto_busqueda = buscar.lower()
-
-            pacientes = [
-                paciente
-                for paciente in pacientes
-                if texto_busqueda in (
-                    paciente["nombre"]
-                    + " "
-                    + paciente["apellido"]
-                    + " "
-                    + paciente["dni"]
-                ).lower()
-            ]
-
-
-        if not pacientes:
-
-            st.warning(
-                "No se encontraron pacientes."
-            )
-
-        else:
-
-            for paciente in pacientes:
-
-                with st.container(border=True):
-
-                    col1, col2, col3 = st.columns(
-                        [3, 2, 1]
-                    )
-
-                    with col1:
-
-                        st.subheader(
-                            f"{paciente['nombre']} "
-                            f"{paciente['apellido']}"
-                        )
-
-                        st.write(
-                            f"DNI: {paciente['dni']}"
-                        )
-
-                    with col2:
-
-                        st.write(
-                            f"Estado: "
-                            f"**{paciente['estado']}**"
-                        )
-
-                        st.write(
-                            f"Teléfono: "
-                            f"{paciente['telefono']}"
-                        )
-
-                    with col3:
-
-                        if st.button(
-                            "Ver ficha",
-                            key=f"ver_{paciente['id']}"
-                        ):
-
-                            st.session_state.paciente_seleccionado = paciente
-
-                            st.rerun()
-
-
-    # --------------------------------------
-    # NUEVO PACIENTE
-    # --------------------------------------
-
-    with pestaña2:
-
-        st.subheader(
-            "Registrar nuevo paciente"
-        )
-
-        nombre = st.text_input(
-            "Nombre *"
-        )
-
-        apellido = st.text_input(
-            "Apellido *"
-        )
-
-        dni = st.text_input(
-            "DNI"
-        )
-
-        fecha_nacimiento = st.date_input(
-            "Fecha de nacimiento",
-            value=date(1990, 1, 1),
-            min_value=date(1900, 1, 1),
-            max_value=date.today()
-        )
-
-        telefono = st.text_input(
-            "Teléfono"
-        )
-
-        email = st.text_input(
-            "Email"
-        )
-
-        motivo = st.text_area(
-            "Motivo de consulta"
-        )
-
-        guardar = st.button(
-            "💾 Guardar paciente",
-            use_container_width=True
-        )
-
-        if guardar:
-
-            if not nombre or not apellido:
-
-                st.error(
-                    "Nombre y apellido son obligatorios."
-                )
-
-            else:
-
-                nuevo_id = max(
-                    [
-                        paciente["id"]
-                        for paciente in st.session_state.pacientes
-                    ],
-                    default=0
-                ) + 1
-
-
-                nuevo_paciente = {
-
-                    "id": nuevo_id,
-
-                    "nombre": nombre,
-
-                    "apellido": apellido,
-
-                    "dni": dni,
-
-                    "fecha_nacimiento":
-                        str(fecha_nacimiento),
-
-                    "telefono": telefono,
-
-                    "email": email,
-
-                    "motivo": motivo,
-
-                    "fecha_ingreso":
-                        str(date.today()),
-
-                    "estado": "Activo"
-                }
-
-
-                st.session_state.pacientes.append(
-                    nuevo_paciente
-                )
-
-
-                st.success(
-                    "✅ Paciente registrado correctamente."
-                )
-
-                st.balloons()
-
-
-# ==========================================
-# FICHA DEL PACIENTE
-# ==========================================
-
-def mostrar_ficha_paciente():
-
-    paciente = st.session_state.paciente_seleccionado
-
-    st.title(
-        f"👤 {paciente['nombre']} "
-        f"{paciente['apellido']}"
-    )
-
-
-    if st.button(
-        "← Volver a pacientes"
-    ):
-
-        st.session_state.paciente_seleccionado = None
-
-        st.rerun()
-
-
-    st.divider()
-
-
-    # --------------------------------------
-    # DATOS
-    # --------------------------------------
-
-    st.subheader("📋 Datos del paciente")
-
-    col1, col2 = st.columns(2)
-
-    with col1:
-
-        st.write(
-            f"**DNI:** {paciente['dni']}"
+            "👤 Datos profesionales"
         )
 
         st.write(
-            f"**Fecha de nacimiento:** "
-            f"{paciente['fecha_nacimiento']}"
+            f"**Nombre:** "
+            f"{profesional['nombre']} "
+            f"{profesional['apellido']}"
         )
-
-        st.write(
-            f"**Teléfono:** "
-            f"{paciente['telefono']}"
-        )
-
-
-    with col2:
 
         st.write(
             f"**Email:** "
-            f"{paciente['email']}"
+            f"{profesional['email']}"
         )
 
         st.write(
-            f"**Motivo de consulta:** "
-            f"{paciente['motivo']}"
+            f"**Profesión:** "
+            f"{profesional.get('profesion') or '-'}"
         )
 
         st.write(
-            f"**Fecha de ingreso:** "
-            f"{paciente['fecha_ingreso']}"
-        )
-
-        st.write(
-            f"**Estado:** "
-            f"{paciente['estado']}"
+            f"**Matrícula:** "
+            f"{profesional.get('matricula') or '-'}"
         )
 
 
-    st.divider()
+# =========================================================
+# CONTROL DE SESIÓN
+# =========================================================
+
+if "usuario" not in st.session_state:
+
+    st.session_state.usuario = None
+
+if "paciente_seleccionado" not in st.session_state:
+
+    st.session_state.paciente_seleccionado = None
 
 
-    # --------------------------------------
-    # EVOLUCIONES
-    # --------------------------------------
-
-    st.subheader("📝 Evoluciones")
-
-    st.info(
-        "Todavía no hay evoluciones registradas."
-    )
-
-    st.button(
-        "➕ Nueva evolución",
-        use_container_width=True
-    )
-
-
-# ==========================================
+# =========================================================
 # EJECUCIÓN
-# ==========================================
+# =========================================================
 
-if st.session_state.logueado:
+if st.session_state.usuario is None:
 
-    dashboard()
+    pantalla_login()
 
 else:
 
-    login()
+    profesional = obtener_profesional()
+
+    if profesional is None:
+
+        st.error(
+            "No encontramos un perfil profesional "
+            "asociado a esta cuenta."
+        )
+
+        if st.button("Cerrar sesión"):
+
+            supabase.auth.sign_out()
+
+            st.session_state.clear()
+
+            st.rerun()
+
+    else:
+
+        dashboard(profesional)
