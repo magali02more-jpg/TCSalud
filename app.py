@@ -101,12 +101,6 @@ def obtener_profesional():
 
         uid = st.session_state.usuario["id"]
 
-        # PRUEBA TEMPORAL
-        st.write(
-            "🔎 UID recibido por TCSalud:",
-            uid
-        )
-
         respuesta = (
             supabase
             .table("profesionales")
@@ -117,12 +111,6 @@ def obtener_profesional():
             )
             .limit(1)
             .execute()
-        )
-
-        # PRUEBA TEMPORAL
-        st.write(
-            "🔎 Resultado de Supabase:",
-            respuesta.data
         )
 
         if respuesta.data:
@@ -207,10 +195,29 @@ def pantalla_login():
 
                     if respuesta.user:
 
+                        # Guardamos los datos del usuario
                         st.session_state.usuario = {
                             "id": respuesta.user.id,
                             "email": respuesta.user.email
                         }
+
+                        # Guardamos los tokens para mantener
+                        # la sesión después de st.rerun()
+                        if respuesta.session:
+
+                            st.session_state.access_token = (
+                                respuesta.session.access_token
+                            )
+
+                            st.session_state.refresh_token = (
+                                respuesta.session.refresh_token
+                            )
+
+                            # Establecemos la sesión
+                            supabase.auth.set_session(
+                                respuesta.session.access_token,
+                                respuesta.session.refresh_token
+                            )
 
                         st.success(
                             "Ingreso correcto."
@@ -440,11 +447,9 @@ def pantalla_pacientes(profesional):
                         or ""
                     )
                     + " "
-                    + (
-                        str(
-                            paciente.get("dni")
-                            or ""
-                        )
+                    + str(
+                        paciente.get("dni")
+                        or ""
                     )
                 ).lower()
             ]
@@ -1030,7 +1035,7 @@ def dashboard(profesional):
         )
 
 # =========================================================
-# INICIO
+# INICIO DE LA APLICACIÓN
 # =========================================================
 
 if st.session_state.modo_recuperacion:
