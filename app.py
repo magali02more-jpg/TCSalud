@@ -1074,4 +1074,4 @@ else:
 
         dashboard(
             profesional
-        )
+        ) 
